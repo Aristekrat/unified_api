@@ -13,7 +13,7 @@ Env Variables
 Arguments
 ---------
 
-- `--env` - must be one of `local` or `production`. `local` env enables DEBUG logs and also disables sentry reporting
+- `--env` - must be one of `local` or `prod`. `local` env enables DEBUG logs and also disables sentry reporting
 - `--port` - API port. defaults to `8080`
 - `--disable-parser` - disable NewsAPI parser. parser is running by default 
 
