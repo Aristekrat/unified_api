@@ -1,7 +1,10 @@
+import datetime
 import itertools
 import json
 import logging
+import random
 import re
+from asyncio import CancelledError
 from typing import List, Dict
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -9,7 +12,8 @@ from uuid import uuid4
 from aiohttp import ClientSession
 from aioredis import Redis
 
-from settings import SOURCES, SOURCE_LEFT, SOURCE_RIGHT, SOURCE_CENTER
+from settings import SOURCES, SOURCE_LEFT, SOURCE_RIGHT, SOURCE_CENTER, \
+    SUBSCRIPTION_AVAILABLE_SOURCES
 from .amp.google import create_amp_lookup
 from .async_newsapi_client import (
     AsyncNewsAPIClient, NewsAPIError, NewsAPIThrottle, SubscriptionPlan
@@ -19,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 
 class NewsAPIParser:
+    """
+    NewsAPI parser. Utilize newsapi client to fetch the news.
+    """
 
     RE_EXTRA_CHARS_PATTERN = re.compile(r'\[\+\d+ chars\]')
 
@@ -34,11 +41,11 @@ class NewsAPIParser:
         SOURCE_RIGHT: TARGET_LIST_RIGHT
     }
 
-    MAX_DOMAINS_PER_REQUEST = 20
+    DATE_FORMAT = '%I:%M %p'
 
     @staticmethod
     def _parse_domain(url):
-        """ Parse and return a domain value without `www.` prefix from provided URL """
+        """ Parse and return a domain from a provided URL. Also trims the `www.` prefix """
         _, domain, _, _, _, _ = urlparse(url)
         return domain.replace('www.', '')
 
@@ -60,15 +67,9 @@ class NewsAPIParser:
 
         self._redis_pool = redis_pool
         self._http_client = http_client
+        self._domains = domains
         self._parsed_urls = set()
-
-        # divide input domains in a different scopes so we'll be able
-        # to maximize the number of results per domain
-        self._scope = []
-        divider = len(domains) // self.MAX_DOMAINS_PER_REQUEST + 1
-        interval = len(domains) // divider
-        for x in range(divider):
-            self._scope.append(domains[interval * x: interval * (x + 1)])
+        self._domains_chunks = []
 
     def __str__(self):
         return self.__class__.__name__
@@ -82,36 +83,79 @@ class NewsAPIParser:
         await self._throttle.init()
 
     async def run_forever(self):
-        """ Entry point for parsing """
-        logger.info(f'{self}: start parsing')
+        """ Main parsing task """
+        try:
+            logger.info(f'{self}: start parsing')
+            while True:
+                self._shuffle_domains()
+                for chunk in self._domains_chunks:
+                    await self._process_chunk(chunk)
 
-        for domains in itertools.cycle(self._scope):
-            logger.debug(f'{self}: will parse {domains}')
-            try:
-                async with self._throttle:
-                    await self._collect_parsed_urls()
-                    try:
-                        response = await self._news_api.everything(
-                            domains=domains, page_size=100, language='en'
-                        )
-                    except NewsAPIError as e:
-                        logger.exception(f"Error during fetching News API: {e}")
-                        continue
+        except CancelledError:
+            logger.warning(f'{self}: `run_forever` task was cancelled')
+            return
 
-                    amp_lookup = await self._construct_amp_lookup(response=response)
-                    parsed_articles = self._parse_articles(response=response, amp_lookup=amp_lookup)
-                    await self._persist_articles(articles=parsed_articles)
+        except Exception as e:
+            logger.exception(f'{self}: Unhandled error occurred in `run_forever` task')
+            raise e
 
-            except Exception:
-                logger.exception(f'Unhandled error occurred during working with domains: {domains}')
-                continue
+    def _shuffle_domains(self):
+        """
+        Randomly shuffles domains scope, e.g. let's imagine that we have
+        domains A, B, C and D and we divide them into a 2 chunks - [[A, B], [C, D]].
+        Max number of results from API is 100, so it's possible that for chunk
+        [A, B] - we'll have 100 results from source `A` and 0 results from source `B`.
+        Shuffling will help us to solve this kind of situation during the next API call,
+        let's say in the next call if the chunk will be different, e.g. [B, C] - we'll
+        potentially have much more results for source `B`.
+        Overall idea - we want to maximize the numbers of results from API on a long run
+        """
+        random.shuffle(self._domains)
+        self._domains_chunks = [[] for _ in range(self._throttle.n_calls_per_hour)]
+        for index, domain in zip(
+            itertools.cycle(range(self._throttle.n_calls_per_hour)),
+            self._domains
+        ):
+            self._domains_chunks[index].append(domain)
+
+    async def _process_chunk(self, domains: List[str]):
+        """
+        Processing of a single chunk of domains.
+        """
+        logger.debug(f'{self}: parsing {domains}')
+        try:
+            async with self._throttle:
+                await self._collect_parsed_urls()
+                try:
+                    response = await self._news_api.everything(
+                        domains=domains,
+                        page_size=100,
+                        language='en'
+                    )
+                except NewsAPIError as e:
+                    logger.exception(f"{self}: Error during fetching News API: {e}")
+                    return
+
+                articles = response['articles']
+                articles = list(self._gen_eligible_articles(articles=articles))
+                amp_lookup = await self._construct_amp_lookup(articles=articles)
+                articles = self._parse_articles(articles=articles, amp_lookup=amp_lookup)
+                await self._persist_articles(articles=articles)
+
+        except CancelledError as e:
+            raise e  # propagate
+
+        except Exception:
+            logger.exception(
+                f'{self}: Unhandled error occurred during parsing domains: {domains}'
+            )
+            return
 
     async def _collect_parsed_urls(self):
         """
-        Iterate over all parsed lists and collect urls to avoid duplicates
+        Iterate over all existing lists and collect urls to avoid future duplicates
         """
-        logger.info(f'{self}: Collecting already parsed URLs. '
-                    f'Current count is {len(self._parsed_urls)}')
+        logger.info(f'{self}: Collecting already parsed URLs')
         self._parsed_urls = set()
 
         for list_name in self.TARGET_LIST_BY_SOURCE_NAME.values():
@@ -120,38 +164,55 @@ class NewsAPIParser:
 
         logger.info(f'{self}: Collected parsed URLs. Current count is {len(self._parsed_urls)}')
 
-    async def _construct_amp_lookup(self, response: Dict) -> Dict:
+    def _gen_eligible_articles(self, articles: List[Dict]) -> List[Dict]:
+        """
+        Yield only "eligible" articles based on input scope and rules:
+        - If article was already parsed - we'll filter it out.
+        - If article domain couldn't be parsed - filter out
+        """
+        for article in articles:
+
+            # check if we've already parsed this article
+            if article['url'] in self._parsed_urls:
+                logger.debug(f'{self}: url {article["url"]} was already parsed')
+                continue
+
+            # check if domain is "parsable"
+            domain = self._parse_domain(article['url'])
+            if not domain:
+                logger.debug(f'{self}: cant parse article domain: {article}')
+                continue
+
+            yield article
+
+    async def _construct_amp_lookup(self, articles: List[Dict]) -> Dict:
         """
         Wrapper for constructing the AMP lookup dictionary.
         Currently uses only Google API
         """
-        article_urls = {article['url'] for article in response['articles'] if article.get('url')}
+        article_urls = {article['url'] for article in articles if article.get('url')}
+        if not article_urls:
+            return {}
         amp_lookup = await create_amp_lookup(urls=article_urls, http_client=self._http_client)
         return amp_lookup
 
     def _parse_articles(self,
-                        response: Dict,
+                        articles: List[Dict],
                         amp_lookup: Dict[str, str]) -> List[Dict]:
         """
         Parse articles. Apply normalization rules, do enrichment, etc
         """
         logger.info(f'{self}: Parsing articles')
         parsed_articles = []
-        raw_articles = response['articles']
 
-        for article in raw_articles:
-            if article['url'] in self._parsed_urls:
-                logger.debug(f'{self}: url {article["url"]} was already parsed')
-                continue  # we've already parsed this article
-
+        for article in articles:
             domain = self._parse_domain(article['url'])
-            if not domain:
-                logger.debug(f'{self}: cant parse article domain: {article}')
-                continue  # we can't parse domain therefore we can't use this
-
             title = article.get('title', '') or ''
             description = article.get('description', title) or title
             content = article.get('content', description) or description
+            published_at = datetime.datetime.strptime(
+                article['publishedAt'], AsyncNewsAPIClient.DATE_FORMAT
+            ).strftime(self.DATE_FORMAT)
 
             parsed_article = {
                 'uuid': str(uuid4()),
@@ -161,14 +222,19 @@ class NewsAPIParser:
                 'url': article['url'],
                 'amp_url': amp_lookup.get(article['url']),
                 'image_url': article['urlToImage'],
-                'published_at': article['publishedAt'],
+                'published_at': published_at,
                 'content': re.sub(self.RE_EXTRA_CHARS_PATTERN, '', content),
                 'domain': domain
             }
 
+            # add `subscription` property which is applicable only for a few domains
+            for source in SUBSCRIPTION_AVAILABLE_SOURCES:
+                if source in domain:
+                    parsed_article['subscription'] = None
+
             parsed_articles.append(parsed_article)
 
-        logger.info(f'{self}: Parsed {len(parsed_articles)} out of {len(raw_articles)} articles')
+        logger.info(f'{self}: Parsed {len(parsed_articles)} out of {len(articles)} articles')
         return parsed_articles
 
     # todo: this method potentially could be a completely separate service which could
@@ -181,12 +247,15 @@ class NewsAPIParser:
         logger.info(f'{self}: persisting articles')
         final_articles = {SOURCE_LEFT: [], SOURCE_CENTER: [], SOURCE_RIGHT: []}
         for article in articles:
-            domain = article.pop('domain', None)
-            if not domain:
+            article_domain = article.pop('domain', None)
+            if not article_domain:
                 continue
             for source_title, sources in SOURCES.items():
-                if domain in sources:
-                    final_articles[source_title].append(json.dumps(article))
+                # we iterate over source names to be able to include the subdomains news
+                for source in sources:
+                    if source in article_domain:
+                        final_articles[source_title].append(json.dumps(article))
+                        break
 
             self._parsed_urls.add(article['url'])
 
@@ -201,6 +270,7 @@ class NewsAPIParser:
             await self._redis_pool.ltrim(target_list, 0, 2000)
 
         for source_title in SOURCES:
-            logger.info(f'{self}: {len(final_articles[source_title])} '
-                        f'articles persisted to {source_title}')
+            logger.info(
+                f'{self}: {len(final_articles[source_title])} articles persisted to {source_title}'
+            )
 

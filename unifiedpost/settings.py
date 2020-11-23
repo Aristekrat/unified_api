@@ -2,6 +2,12 @@ ENV_LOCAL = 'local'
 ENV_PROD = 'prod'
 ENVS = {ENV_LOCAL, ENV_PROD, }
 
+# tcp pool connections max limit
+TCP_CONNECTIONS_LIMIT = 100
+
+# keep DNS records in a cache for 1 hour to avoid DNS resolve before each request
+TTL_DNS_CACHE = 60 * 60
+
 SOURCE_LEFT = 'left'
 SOURCE_CENTER = 'center'
 SOURCE_RIGHT = 'right'
@@ -46,6 +52,10 @@ SOURCES = {
         'cnbc.com',
         'reason.com',
     }
+}
+
+SUBSCRIPTION_AVAILABLE_SOURCES = {
+    'nytimes.com', 'washingtonpost.com', 'theatlantic.com',
 }
 
 SOURCES_SET = {source for sources in SOURCES.values() for source in sources}

@@ -23,6 +23,10 @@ class SubscriptionPlan(IntEnum):
     ENTERPRISE = 250000
 
 
+class Retry(Exception):
+    """ Retry error which is used for backoff """
+
+
 class NewsAPIError(Exception):
     """ Base NewsAPI Error """
     def __init__(self, status, code, message):
@@ -34,10 +38,6 @@ class NewsAPIError(Exception):
         return f'NewsAPIError {self.code}: {self.message}'
 
     __repr__ = __str__
-
-
-class Retry(Exception):
-    """ Retry error which is used for backoff """
 
 
 @dataclass
@@ -54,7 +54,7 @@ class NewsAPIThrottle:
     >>> throttle = NewsAPIThrottle(plan=SubscriptionPlan.DEVELOPER, redis_pool=pool)
     >>> await throttle.init()
     >>> async with throttle:
-    >>>     newsapi.everything(...)
+    >>>     await newsapi.everything(...)
     """
 
     LCA_REDIS_KEY = 'newsapi:throttle:last_call_at'
@@ -62,7 +62,8 @@ class NewsAPIThrottle:
     def __init__(self,
                  plan: SubscriptionPlan,
                  redis_pool: Optional[Redis] = None):
-
+        # number of calls per hour based on a plan
+        self.n_calls_per_hour = plan.value // 24
         # interval between calls based on a plan. seconds
         self._sleep_interval = 24 * 60 * 60 / plan.value + 1
         self._redis_pool = redis_pool
@@ -102,20 +103,23 @@ class NewsAPIThrottle:
 
 
 class AsyncNewsAPIClient:
+    """
+    Asynchronous wrapper for https://newsapi.org
+    """
 
-    _BASE_URL = 'https://newsapi.org/v2'
+    BASE_URL = 'https://newsapi.org/v2'
+    DATE_FORMAT = '%Y-%m-%dT%H:%S:%MZ'
 
     def __init__(self,
                  api_key: str,
-                 http_client: Optional[ClientSession],
-                 return_mock_response: bool = False):
+                 http_client: Optional[ClientSession]):
 
         self._api_key = api_key
         self._http_client = http_client or ClientSession()
-        self._return_mock_response = return_mock_response
 
     @property
     def headers(self):
+        """ Base headers used for auth """
         return {'X-Api-Key': self._api_key}
 
     async def everything(self,
@@ -130,7 +134,44 @@ class AsyncNewsAPIClient:
                          sort_by: Optional[str] = None,
                          page_size: Optional[float] = None,
                          page: Optional[int] = None) -> Dict:
-
+        """
+        :param q: Keywords or phrases to search for in the article title and body.
+                  Advanced search is supported here:
+                  - Surround phrases with quotes (") for exact match.
+                  - Prepend words or phrases that must appear with a + symbol. Eg: +bitcoin
+                  - Prepend words that must not appear with a - symbol. Eg: -bitcoin
+                  - Alternatively you can use the AND / OR / NOT keywords, and optionally group
+                    these with parenthesis. Eg: crypto AND (ethereum OR litecoin) NOT bitcoin.
+        :param qln_title: Keywords or phrases to search for in the article title only.
+                          Advanced search is supported here:
+                          - Surround phrases with quotes (") for exact match.
+                          - Prepend words or phrases that must appear with a + symbol. Eg: +bitcoin
+                          - Prepend words that must not appear with a - symbol. Eg: -bitcoin
+                          – Alternatively you can use the AND / OR / NOT keywords, and optionally
+                            group these with parenthesis. Eg: crypto AND (ethereum OR litecoin)
+                            NOT bitcoin.
+        :param sources: A list of strings of identifiers (maximum 20) for the news sources or
+                        blogs you want headlines from. Use the /sources endpoint to locate these
+                        programmatically or look at the sources index.
+        :param domains: A list of strings of domains (eg bbc.co.uk, techcrunch.com,
+                        engadget.com) to restrict the search to.
+        :param exclude_domains: A list of strings of domains (eg bbc.co.uk, techcrunch.com,
+                                engadget.com) to remove from the results.
+        :param date_from: Datetime for the `oldest` article allowed.
+        :param date_to: Datetime for the `newest` article allowed.
+        :param language: The 2-letter ISO-639-1 code of the language you want to get headlines for.
+                         Possible options: ar, de, en, es, fr, he, it, nl, no, pt, ru, se, ud, zh.
+                         Default: all languages returned.
+        :param sort_by: The order to sort the articles in. Possible options: `relevancy`,
+                        `popularity`, `publishedAt`.
+                        `relevancy` = articles more closely related to q come first.
+                        `popularity` = articles from popular sources and publishers come first.
+                        `publishedAt` = newest articles come first.
+                        Default: `publishedAt`
+        :param page_size: The number of results to return per page.
+                          `20` is the default, `100` is the maximum.
+        :param page: Use this to page through the results.
+        """
         params = {}
         if q is not None:
             params['q'] = q
@@ -145,7 +186,7 @@ class AsyncNewsAPIClient:
             params['domains'] = ','.join(domains)
 
         if exclude_domains is not None:
-            params['excludeDomains'] = exclude_domains
+            params['excludeDomains'] = ','.join(exclude_domains)
 
         if date_from is not None:
             params['from'] = date_from
@@ -172,11 +213,8 @@ class AsyncNewsAPIClient:
         exception=(Retry, asyncio.TimeoutError)
     )
     async def _base_request(self, endpoint: str, params: Dict) -> Dict:
-        if self._return_mock_response is True:
-            with open('unifiedpost/async_newsapi_client/mocked_response.json') as f:
-                return json.load(f)
-
-        url = f'{self._BASE_URL}/{endpoint}'
+        """ Base request wrapper """
+        url = f'{self.BASE_URL}/{endpoint}'
         async with self._http_client.get(url,
                                          params=params,
                                          headers=self.headers) as response:

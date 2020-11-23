@@ -7,6 +7,10 @@ from .app import create_app
 
 
 def main():
+    """
+    Application entry-point.
+    Parse args, setup logging, create an app instance and runs the web server
+    """
     args = parse_args()
     debug = args.env != ENV_PROD
     setup_logging(debug=debug)

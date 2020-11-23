@@ -4,6 +4,7 @@ from aiohttp.web_app import Application
 
 from api.routes import setup_common_api_routes
 from api.v1.news import create_news_v1_app
+from app_signals.shutdown import close_redis_pool, close_http_client
 from .app_signals.startup import (
     init_redis_pool, init_http_client, init_news_api_parser, init_sentry
 )
@@ -13,7 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 def create_app(args, debug: bool = False) -> Application:
-
+    """
+    Entry-point for `Application` instance creation
+    """
     logger.info(f'Initializing app for {args.env}. Debug mode is {"on" if debug else "off"}')
 
     app = Application()
@@ -29,6 +32,8 @@ def create_app(args, debug: bool = False) -> Application:
     app.on_startup.extend([
         init_redis_pool, init_http_client, init_sentry
     ])
+
+    app.on_shutdown.extend([close_redis_pool, close_http_client])
 
     if not args.disable_parser:
         app.on_startup.append(init_news_api_parser)

@@ -3,6 +3,7 @@ from logging.config import dictConfig
 
 
 def setup_logging(debug: bool = False):
+    """ Init project logging """
     level = logging.DEBUG if debug is True else logging.INFO
     dictConfig({
         'version': 1,
