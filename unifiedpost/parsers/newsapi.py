@@ -85,7 +85,7 @@ class NewsAPIParser:
     async def run_forever(self):
         """ Main parsing task """
         try:
-            logger.info(f'{self}: start parsing')
+            logger.info(f'{self}: running forever...')
             while True:
                 self._shuffle_domains()
                 for chunk in self._domains_chunks:

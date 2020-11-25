@@ -1,6 +1,7 @@
 import logging
 
 from aiohttp.web_app import Application
+from aiohttp_apispec import setup_aiohttp_apispec
 
 from api.routes import setup_common_api_routes
 from api.v1.news import create_news_v1_app
@@ -28,6 +29,15 @@ def create_app(args, debug: bool = False) -> Application:
 
     # v1 routes
     app.add_subapp('/api/v1/news', create_news_v1_app())
+
+    # Swagger
+    if debug is True:
+        setup_aiohttp_apispec(
+            app=app,
+            title='UnifiedPost API',
+            version='v1',
+            swagger_path='/apidocs'
+        )
 
     app.on_startup.extend([
         init_redis_pool, init_http_client, init_sentry

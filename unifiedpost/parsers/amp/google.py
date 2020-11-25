@@ -68,7 +68,10 @@ async def create_amp_lookup(urls: Collection[str],
 
             response.raise_for_status()
             json_response = await response.json()
-            lookup.update({x['originalUrl']: x['ampUrl'] for x in json_response['ampUrls']})
+            amp_urls = json_response.get('ampUrls')
+            if not amp_urls:
+                continue  # it's possible that no AMP URL's returned
+            lookup.update({x['originalUrl']: x['ampUrl'] for x in amp_urls})
 
     logger.info(f'AMP lookup created. Found {len(lookup)} out of {len(urls)} URLs')
     return lookup

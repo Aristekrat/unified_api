@@ -60,3 +60,5 @@ SUBSCRIPTION_AVAILABLE_SOURCES = {
 
 SOURCES_SET = {source for sources in SOURCES.values() for source in sources}
 DOMAINS_LIST = sorted(SOURCES_SET)
+
+DEFAULT_API_ARTICLES_LIMIT = 100
