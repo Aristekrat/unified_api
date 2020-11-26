@@ -41,7 +41,7 @@ class NewsAPIParser:
         SOURCE_RIGHT: TARGET_LIST_RIGHT
     }
 
-    DATE_FORMAT = '%I:%M %p'
+    DATE_FORMAT = '%Y-%m-%d %I:%M %p'
 
     @staticmethod
     def _parse_domain(url):
@@ -216,6 +216,7 @@ class NewsAPIParser:
 
             parsed_article = {
                 'uuid': str(uuid4()),
+                'source': article['source'],
                 'title': title,
                 'author': article['author'],
                 'description': description,

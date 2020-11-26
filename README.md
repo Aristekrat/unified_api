@@ -1,6 +1,6 @@
 Env Variables
 -------------
-- copy `sample.env` to `.env` file and use real values for variables, e.g. api keys, redis data etc
+- copy `sample.env` to `.env` file and use real values for variables, e.g. api keys, redis credentials etc
 
 - `REDIS_HOST` - redis host. defaults to `localhost`
 - `REDIS_PORT` - redis port. defaults to `6379`
@@ -26,4 +26,6 @@ Run
 
 Docker
 ------
-... TBD ...
+- run using docker compose:
+- `docker-compose -f docker/dev.docker-compose.yml build`
+- `docker-compose -f docker/dev.docker-compose.yml up -d`

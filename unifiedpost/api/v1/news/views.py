@@ -94,4 +94,4 @@ async def view_get_from_base_list(request: Request, suffix: str):
 
     # serialize and return
     articles = [json.loads(article) for article in raw_articles]
-    return json_200({'articles': articles})
+    return json_200(articles)
