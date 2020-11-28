@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 class AsyncNewsAPIClient:
     """
     Asynchronous wrapper for https://newsapi.org
+    Usage:
+
+    >>> client = AsyncNewsAPIClient(api_key='API_KEY')
+    >>> try:
+    >>>     articles = await client.everything()
+    >>> except NewsAPIError as e:
+    >>>     pass
     """
 
     BASE_URL = 'https://newsapi.org/v2'
@@ -24,7 +31,7 @@ class AsyncNewsAPIClient:
 
     def __init__(self,
                  api_key: str,
-                 http_client: Optional[ClientSession]):
+                 http_client: Optional[ClientSession] = None):
 
         self._api_key = api_key
         self._http_client = http_client or ClientSession()
@@ -139,7 +146,7 @@ class AsyncNewsAPIClient:
                 response.raise_for_status()
             except ClientResponseError as e:
                 if e.status >= 500:
-                    raise Retry()
+                    raise Retry()  # server error - let's do a retry
                 else:
                     # 400 <= status < 500
                     message = await response.text()
@@ -196,7 +203,7 @@ class NewsAPIThrottle:
     __repr__ = __str__
 
     async def init(self):
-        """ Initialize Throttler in case if redis pool was providded. """
+        """ Initialize Throttler in case if redis pool was provided. """
         if self._redis_pool is not None:
             last_call_at = await self._redis_pool.get(self.LCA_REDIS_KEY)
             self._last_call_at = float(last_call_at) if last_call_at else None

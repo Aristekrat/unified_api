@@ -13,7 +13,7 @@ from aiohttp import ClientSession
 from aioredis import Redis
 
 from settings import SOURCES, SOURCE_LEFT, SOURCE_RIGHT, SOURCE_CENTER, \
-    SUBSCRIPTION_AVAILABLE_SOURCES
+    SUBSCRIPTION_ENABLED_DOMAINS, SOURCE_MAX_ARTICLES
 from .amp.google import create_amp_lookup
 from .async_newsapi_client import (
     AsyncNewsAPIClient, NewsAPIError, NewsAPIThrottle, SubscriptionPlan
@@ -41,7 +41,7 @@ class NewsAPIParser:
         SOURCE_RIGHT: TARGET_LIST_RIGHT
     }
 
-    DATE_FORMAT = '%Y-%m-%d %I:%M %p'
+    DATE_FORMAT = '%B %d, %Y %I:%M %p'
 
     @staticmethod
     def _parse_domain(url):
@@ -206,7 +206,7 @@ class NewsAPIParser:
         parsed_articles = []
 
         for article in articles:
-            domain = self._parse_domain(article['url'])
+            article_domain = self._parse_domain(article['url'])
             title = article.get('title', '') or ''
             description = article.get('description', title) or title
             content = article.get('content', description) or description
@@ -225,13 +225,15 @@ class NewsAPIParser:
                 'image_url': article['urlToImage'],
                 'published_at': published_at,
                 'content': re.sub(self.RE_EXTRA_CHARS_PATTERN, '', content),
-                'domain': domain
+                'domain': article_domain,
+                'subscription': False
             }
 
-            # add `subscription` property which is applicable only for a few domains
-            for source in SUBSCRIPTION_AVAILABLE_SOURCES:
-                if source in domain:
-                    parsed_article['subscription'] = None
+            # change `subscription` property for needed domains
+            for domain in SUBSCRIPTION_ENABLED_DOMAINS:
+                if domain.value in article_domain:
+                    parsed_article['subscription'] = True
+                    break
 
             parsed_articles.append(parsed_article)
 
@@ -267,8 +269,8 @@ class NewsAPIParser:
             target_list = self.TARGET_LIST_BY_SOURCE_NAME[source_title]
             await self._redis_pool.lpush(target_list, *articles)
 
-            # finally trim to 200 results per source
-            await self._redis_pool.ltrim(target_list, 0, 2000)
+            # finally trim to `max_articles` results per source
+            await self._redis_pool.ltrim(target_list, 0, SOURCE_MAX_ARTICLES)
 
         for source_title in SOURCES:
             logger.info(

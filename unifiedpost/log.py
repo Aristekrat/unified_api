@@ -22,20 +22,10 @@ def setup_logging(debug: bool = False):
             },
         },
         'loggers': {
-            'unifiedpost': {
+            logger_name: {
                 'handlers': ['default'],
                 'level': level,
                 'propagate': False
-            },
-            'api': {
-                'handlers': ['default'],
-                'level': level,
-                'propagate': False
-            },
-            'parsers': {
-                'handlers': ['default'],
-                'level': level,
-                'propagate': False
-            }
+            } for logger_name in ('unifiedpost', 'api', 'parsers')
         }
     })

@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 import aiohttp.web
 
-from .common import setup_logging
+from .log import setup_logging
 from .settings import ENVS, ENV_PROD
 from .app import create_app
 
@@ -20,9 +20,9 @@ def main():
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument('--port', default=8080)
-    parser.add_argument('--env', required=True, choices=ENVS)
-    parser.add_argument('--disable-parser', action='store_true')
+    parser.add_argument('--port', default=8080, help='Application TCP port')
+    parser.add_argument('--env', required=True, choices=ENVS, help='Application environment')
+    parser.add_argument('--disable-parser', action='store_true', help='Weather to disable parser')
     return parser.parse_args()
 
 

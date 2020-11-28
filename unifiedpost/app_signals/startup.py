@@ -12,7 +12,7 @@ from aioredis import create_redis_pool
 
 from parsers.async_newsapi_client import SubscriptionPlan
 from parsers.newsapi import NewsAPIParser
-from settings import DOMAINS_LIST, TCP_CONNECTIONS_LIMIT, TTL_DNS_CACHE
+from settings import Domain, TCP_CONNECTIONS_LIMIT, TTL_DNS_CACHE
 
 logger = logging.getLogger(__name__)
 
@@ -84,10 +84,10 @@ async def init_news_api_parser(app: Application):
 
     app['news_api_parser'] = news_api_parser = NewsAPIParser(
         api_key=os.environ['NEWSAPI_API_KEY'],
-        plan=SubscriptionPlan.DEVELOPER,
+        plan=SubscriptionPlan.DEVELOPER,  # todo: this should be argument
         redis_pool=redis_pool,
         http_client=http_client,
-        domains=DOMAINS_LIST
+        domains=[domain.value for domain in Domain]
     )
 
     await news_api_parser.init()

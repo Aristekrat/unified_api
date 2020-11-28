@@ -21,6 +21,10 @@ Run
 ---
 
 - `pip install -r requirements.txt`
+
+Examples
+========
+
 - Run local env on port 9000 with disabled parser: `python -m unifiedpost --env=local --port=9000 --disable-parser`
 - Run production version on port 8080 with parser enabled: `python -m unifiedpost --env=production`
 
@@ -29,3 +33,9 @@ Docker
 - run using docker compose:
 - `docker-compose -f docker/dev.docker-compose.yml build`
 - `docker-compose -f docker/dev.docker-compose.yml up -d`
+
+
+Swagger
+-------
+
+- works only in `local` env at `http://host:port/apidocs

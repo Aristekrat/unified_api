@@ -39,10 +39,8 @@ def create_app(args, debug: bool = False) -> Application:
             swagger_path='/apidocs'
         )
 
-    app.on_startup.extend([
-        init_redis_pool, init_http_client, init_sentry
-    ])
-
+    # startup and shutdown signals
+    app.on_startup.extend([init_redis_pool, init_http_client, init_sentry])
     app.on_shutdown.extend([close_redis_pool, close_http_client])
 
     if not args.disable_parser:
