@@ -253,10 +253,12 @@ class NewsAPIParser:
             article_domain = article.pop('domain', None)
             if not article_domain:
                 continue
-            for source_title, sources in SOURCES.items():
-                # we iterate over source names to be able to include the subdomains news
-                for source in sources:
-                    if source in article_domain:
+
+            # we iterate over all domains here to be able to include the subdomains,
+            # e.g. article domain is 'us.cnn.com` and we must match it with `cnn.com`
+            for source_title, domains in SOURCES.items():
+                for domain in domains:
+                    if domain.value in article_domain:
                         final_articles[source_title].append(json.dumps(article))
                         break
 
@@ -264,6 +266,7 @@ class NewsAPIParser:
 
         for source_title, articles in final_articles.items():
             if not articles:
+                logger.info(f'{self}: no articles in this round for "{source_title}"')
                 continue
 
             target_list = self.TARGET_LIST_BY_SOURCE_NAME[source_title]
@@ -271,9 +274,4 @@ class NewsAPIParser:
 
             # finally trim to `max_articles` results per source
             await self._redis_pool.ltrim(target_list, 0, SOURCE_MAX_ARTICLES)
-
-        for source_title in SOURCES:
-            logger.info(
-                f'{self}: {len(final_articles[source_title])} articles persisted to {source_title}'
-            )
-
+            logger.info(f'{self}: {len(articles)} articles persisted to {source_title}')
