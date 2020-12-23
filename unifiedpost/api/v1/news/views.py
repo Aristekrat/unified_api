@@ -1,13 +1,9 @@
-import json
-
 from aiohttp.web_request import Request
 from aiohttp_apispec import docs
-from aioredis import Redis
 
 from api.json_utils import json_200
-from parsers.newsapi import NewsAPIParser
+from db.utils import fetchall
 from settings import SOURCE_LEFT, SOURCE_CENTER, SOURCE_RIGHT, DEFAULT_API_ARTICLES_LIMIT
-
 
 base_articles_doc = docs(
     summary='Articles API',
@@ -86,12 +82,15 @@ async def view_get_from_base_list(request: Request, suffix: str):
     except (TypeError, ValueError):
         limit = DEFAULT_API_ARTICLES_LIMIT
 
-    redis_pool: Redis = request.config_dict['redis_pool']
+    engine = request.config_dict['db']
 
     # get all articles
-    target_list_key = f'{NewsAPIParser.REDIS_PREFIX_RESULTS}:{suffix}'
-    raw_articles = await redis_pool.lrange(target_list_key, 0, limit - 1)
+    query = f"""
+        SELECT * FROM articles_{suffix}
+        ORDER BY id DESC
+        LIMIT {limit}
+    """
+    async with engine.acquire() as conn:
+        articles = await fetchall(conn=conn, query=query)
 
-    # serialize and return
-    articles = [json.loads(article) for article in raw_articles]
     return json_200(articles)

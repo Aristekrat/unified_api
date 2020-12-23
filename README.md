@@ -7,6 +7,10 @@ Env Variables
 - `REDIS_PORT` - redis port. defaults to `6379`
 - `REDIS_PASSWORD` - redis password
 - `REDIS_SSL` - indicates whether redis server has SSL enabled. Value must be set to `true` for using SSL in client. Defaults to `false`
+- `DB_HOST` - database host
+- `DB_NAME` - database name
+- `DB_USER` - database user
+- `DB_PASSWORD` - database user password
 - `NEWSAPI_API_KEY` - NewsAPI API key
 - `GOOGLE_API_KEY` - Google API key which has enabled AMP permissions
 - `SENTRY_DSN` - sentry DSN which should be obtained at `sentry.io`

@@ -26,6 +26,6 @@ def setup_logging(debug: bool = False):
                 'handlers': ['default'],
                 'level': level,
                 'propagate': False
-            } for logger_name in ('unifiedpost', 'api', 'parsers')
+            } for logger_name in ('unifiedpost', 'api', 'parsers', 'app_signals', 'db')
         }
     })

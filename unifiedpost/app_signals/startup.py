@@ -1,20 +1,33 @@
-import asyncio
 import logging
 import os
 import ssl
 
 import aiohttp
 import sentry_sdk
-from sentry_sdk.integrations.aiohttp import AioHttpIntegration
 from aiohttp import ClientSession
 from aiohttp.web_app import Application
+from aiopg.sa import create_engine
 from aioredis import create_redis_pool
+from sentry_sdk.integrations.aiohttp import AioHttpIntegration
 
-from parsers.async_newsapi_client import SubscriptionPlan
-from parsers.newsapi import NewsAPIParser
-from settings import Domain, TCP_CONNECTIONS_LIMIT, TTL_DNS_CACHE
+from settings import TCP_CONNECTIONS_LIMIT, TTL_DNS_CACHE
 
 logger = logging.getLogger(__name__)
+
+
+async def init_pg(app: Application):
+    db_user = os.environ['DB_USER']
+    db_password = os.environ['DB_PASSWORD']
+    db_host = os.environ['DB_HOST']
+    db_name = os.environ['DB_NAME']
+
+    dsn = f'postgresql://{db_user}:{db_password}@{db_host}:5432/{db_name}'
+    app['db'] = await create_engine(
+        dsn=dsn,
+        minsize=1,
+        maxsize=50,
+        pool_recycle=3600
+    )
 
 
 async def init_sentry(app: Application):
@@ -74,21 +87,3 @@ async def init_http_client(app: Application):
     logger.info('Initializing HTTP client')
     tcp_connector = aiohttp.TCPConnector(limit=TCP_CONNECTIONS_LIMIT, ttl_dns_cache=TTL_DNS_CACHE)
     app['http_client'] = ClientSession(connector=tcp_connector)
-
-
-async def init_news_api_parser(app: Application):
-    """ NewsAPI parser task """
-    logger.info('Initializing NewsAPI parser')
-    redis_pool = app['redis_pool']
-    http_client = app['http_client']
-
-    app['news_api_parser'] = news_api_parser = NewsAPIParser(
-        api_key=os.environ['NEWSAPI_API_KEY'],
-        plan=SubscriptionPlan.DEVELOPER,  # todo: this should be argument
-        redis_pool=redis_pool,
-        http_client=http_client,
-        domains=[domain.value for domain in Domain]
-    )
-
-    await news_api_parser.init()
-    app['news_api_task'] = asyncio.create_task(news_api_parser.run_forever())

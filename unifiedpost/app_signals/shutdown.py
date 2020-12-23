@@ -2,9 +2,15 @@ import asyncio
 import logging
 
 from aiohttp.web_app import Application
-
+from aiopg.sa import Engine
 
 logger = logging.getLogger(__name__)
+
+
+async def close_pg(app: Application):
+    db: Engine = app['db']
+    db.close()
+    await db.wait_closed()
 
 
 async def close_redis_pool(app: Application):
