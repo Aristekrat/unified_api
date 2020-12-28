@@ -11,8 +11,7 @@ TTL_DNS_CACHE = 60 * 60
 
 DEFAULT_API_ARTICLES_LIMIT = 100
 
-DATE_FORMAT = '%Y-%m-%dT%H:%S:%MZ'
-
+DATE_FORMAT = '%B %d, %Y %I:%M %p'
 
 SOURCE_LEFT = 'left'
 SOURCE_CENTER = 'center'

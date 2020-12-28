@@ -86,7 +86,8 @@ async def view_get_from_base_list(request: Request, suffix: str):
 
     # get all articles
     query = f"""
-        SELECT * FROM articles_{suffix}
+        SELECT * 
+        FROM articles_{suffix}
         ORDER BY id DESC
         LIMIT {limit}
     """
