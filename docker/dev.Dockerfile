@@ -5,6 +5,7 @@ RUN pip install -r /tmp/requirements.txt
 RUN rm /tmp/requirements.txt
 
 ADD .env /opt/.env
+ADD config /opt/config
 ADD unifiedpost /opt/unifiedpost
 
 ENV PYTHONPATH /opt/unifiedpost
