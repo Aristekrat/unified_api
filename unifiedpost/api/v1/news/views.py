@@ -3,7 +3,7 @@ from aiohttp_apispec import docs
 
 from api.json_utils import json_200
 from db.utils import fetchall
-from settings import SOURCE_LEFT, SOURCE_CENTER, SOURCE_RIGHT, DEFAULT_API_ARTICLES_LIMIT
+from settings import SOURCE_LEFT, SOURCE_CENTER, SOURCE_RIGHT
 
 base_articles_doc = docs(
     summary='Articles API',
@@ -80,15 +80,17 @@ async def view_get_from_base_list(request: Request, suffix: str):
     try:
         limit = int(request.query.get('limit'))
     except (TypeError, ValueError):
-        limit = DEFAULT_API_ARTICLES_LIMIT
+        limit = request.config_dict['config']['api']['articles_default_limit']
 
     engine = request.config_dict['db']
+    days_interval = request.config_dict['config']['api']['articles_days_interval']
 
     # get all articles
     query = f"""
         SELECT * 
         FROM articles_{suffix}
-        ORDER BY id DESC
+        WHERE published_at >= now() - interval '{days_interval} days'
+        ORDER BY published_at DESC
         LIMIT {limit}
     """
     async with engine.acquire() as conn:

@@ -11,14 +11,15 @@ from .app_signals.startup import init_pg, init_sentry
 logger = logging.getLogger(__name__)
 
 
-def create_app(args, debug: bool = False) -> Application:
+def create_app(config, debug: bool = False) -> Application:
     """
     Entry-point for `Application` instance creation
     """
-    logger.info(f'Initializing app for {args.env}. Debug mode is {"on" if debug else "off"}')
+    logger.info(f'Initializing app for {config["env"]}. Debug mode is {"on" if debug else "off"}')
 
     app = Application()
-    app['env'] = args.env
+    app['env'] = config['env']
+    app['config'] = config
     app['debug'] = debug
 
     # common routes

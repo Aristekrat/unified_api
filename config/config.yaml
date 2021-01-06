@@ -1,0 +1,17 @@
+local:
+  env: local
+  api:
+    articles_default_limit: 100
+    articles_days_interval: 10
+
+dev:
+  env: dev
+  api:
+    articles_default_limit: 100
+    articles_days_interval: 2
+
+prod:
+  env: prod
+  api:
+    articles_default_limit: 100
+    articles_days_interval: 2
