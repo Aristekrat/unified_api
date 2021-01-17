@@ -15,6 +15,14 @@ base_articles_doc = docs(
             'default': 100,
             'type': 'integer',
             'description': 'Number of articles to be returned'
+        },
+        {
+            'name': 'max_id',
+            'in': 'query',
+            'default': None,
+            'type': 'integer',
+            'description': 'Article identifier which will be used to return a "next" '
+                           'portion of articles which has id lower than provided one'
         }
     ],
     responses={
@@ -82,17 +90,36 @@ async def view_get_from_base_list(request: Request, suffix: str):
     except (TypeError, ValueError):
         limit = request.config_dict['config']['api']['articles_default_limit']
 
-    engine = request.config_dict['db']
-    days_interval = request.config_dict['config']['api']['articles_days_interval']
+    try:
+        # filter using provided article id. get all articles
+        # which were published BEFORE the provided one. Used
+        # for a `next page` functionality
+        max_id = int(request.query.get('max_id'))
+        max_id_filter_statement = f"""
+            AND published_at < (
+                SELECT published_at 
+                FROM articles_{suffix} 
+                WHERE id = {max_id}
+            )
+        """
 
-    # get all articles
+    except (TypeError, ValueError):
+        max_id_filter_statement = ''
+
+    days_interval = request.config_dict['config']['api']['articles_days_interval']
+    days_interval_statement = f"AND published_at >= now() - interval '{days_interval} days'"
+
     query = f"""
         SELECT * 
         FROM articles_{suffix}
-        WHERE published_at >= now() - interval '{days_interval} days'
+        WHERE 1 = 1 
+        {days_interval_statement}
+        {max_id_filter_statement}
         ORDER BY published_at DESC
         LIMIT {limit}
     """
+
+    engine = request.config_dict['db']
     async with engine.acquire() as conn:
         articles = await fetchall(conn=conn, query=query)
 

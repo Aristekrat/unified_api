@@ -9,6 +9,7 @@ from aiohttp.web_app import Application
 from aiopg.sa import create_engine
 from aioredis import create_redis_pool
 from sentry_sdk.integrations.aiohttp import AioHttpIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from settings import TCP_CONNECTIONS_LIMIT, TTL_DNS_CACHE
 
@@ -47,7 +48,8 @@ async def init_sentry(app: Application):
     sentry_sdk.init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
-        integrations=[AioHttpIntegration()]
+        integrations=[AioHttpIntegration(), SqlalchemyIntegration()],
+        environment=app['env']
     )
 
 
